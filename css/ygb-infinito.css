@@ -1,0 +1,29 @@
+/**
+ * YGB Scroll Infinito WooCommerce
+ * @version 8.2.2
+ */
+.woocommerce-pagination,
+.astra-pagination {
+    display: none !important;
+}
+
+.ygb-infinito-loader {
+    text-align: center;
+    padding: 20px;
+    margin: 20px 0;
+    background: #f9f9f9;
+    border-radius: 8px;
+    clear: both;
+    color: #666;
+}
+
+.ygb-infinito-no-more {
+    text-align: center;
+    padding: 20px;
+    margin: 20px 0;
+    background: #f0f0f0;
+    border-radius: 8px;
+    color: #666;
+    font-size: 14px;
+    clear: both;
+}
