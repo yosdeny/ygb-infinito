@@ -1,13 +1,19 @@
 <?php
 /**
  * Plugin Name: YGB Scroll Infinito WooCommerce
+ * Plugin URI: https://github.com/yosdeny
  * Description: Scroll infinito en tienda/categorías + Muestra todos los resultados en búsquedas
  * Version: 8.3.2-fix
  * Author: YGB
+ * Author URI: https://github.com/yosdeny
  * Text Domain: ygb-scroll-infinito
  * Requires at least: 7.0
+ * Tested up to: 7.1
  * Requires PHP: 8.0
+ * Tested PHP: 8.2
  * WC requires at least: 7.0
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  *
  * @package YGB_Scroll_Infinito
  * @version 8.3.2-fix

@@ -2,10 +2,11 @@
 Contributors: ygb
 Tags: woocommerce, infinite scroll, scroll infinito, pagination, shop, categories, search, products, ajax, performance
 Requires at least: 7.0
-Tested up to: 6.7
+Tested up to: 7.1
 Requires PHP: 8.0
+Tested PHP: 8.2
 WC requires at least: 7.0
-Stable tag: 8.3.2
+Stable tag: 8.3.2-fix
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
