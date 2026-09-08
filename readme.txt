@@ -27,7 +27,7 @@ Scroll infinito para tienda y categorías de WooCommerce, con límite configurab
   * Límite máximo de productos totales (10–5000).
 * **Compatible** con los temas más populares, especialmente **Astra**, **Flatsome**, **Storefront**, y con los sistemas de caché más usados: SG Speed Optimizer y **LiteSpeed Cache**.
 * **Ligero y optimizado**: solo carga scripts en las páginas donde se necesita.
-* **Seguro**: validación de nonce, sanitización de entradas y salidas, protección contra SSRF.
+* **Seguro**: validación de nonce, sanitización de entradas y salidas, protección contra SSRF, rate limiting y validación estricta de URLs.
 * **Soporte avanzado para lazy loading**: las imágenes de los productos cargados mediante scroll infinito se muestran correctamente gracias a la notificación automática a los sistemas de carga perezosa (WP Rocket, vanilla-lazyload, LiteSpeed Cache, etc.).
 * **Selectores de paginación ampliados**: compatible con una amplia variedad de temas.
 * **Sistema de reintentos**: si la carga falla, reintenta automáticamente hasta 3 veces.
@@ -80,6 +80,19 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Changelog ===
 
+= 8.3.2-fix (2026-07-27) =
+* **CRÍTICO - Seguridad**: Eliminada vulnerabilidad de inyección SQL en `force_search_sql_limit()` - ya no se modifica directamente la consulta SQL con regex peligrosos.
+* **CRÍTICO - Seguridad**: Corregido XSS reflejado en `fix_search_counter_js()` - ahora se sanitiza rigurosamente con `esc_js()` y `.text()` de jQuery.
+* **CRÍTICO - Seguridad**: Validación estricta de URLs en `is_safe_url()` - previene ataques mediante subdominios maliciosos verificando el host exacto.
+* **ALTA - Seguridad**: Eliminada exposición de datos sensibles de `WP_Query` en `get_current_query_args()` - ahora se construye un array mínimo con datos sanitizados.
+* **ALTA - Seguridad**: Eliminado objeto `current_query_args` del frontend para prevenir exposición de información interna.
+* **MEDIA - Seguridad**: Implementado rate limiting (10 peticiones/minuto por IP) en el endpoint AJAX para prevenir abuso.
+* **MEDIA - Rendimiento**: Reducido timeout de peticiones remotas de 30s a 10s para prevenir DoS.
+* **Seguridad**: Sanitización mejorada de contenido remoto - eliminación de scripts y estilos potencialmente maliciosos.
+* **Mejora**: Añadido uninstall hook para limpieza completa de opciones al desinstalar el plugin.
+* **Mejora**: Todos los casts de tipo añadidos para garantizar integridad de datos.
+* **Compatibilidad**: Mantenidas todas las mejoras de la versión 8.3.2 (selectores ampliados, reintentos, lazy loading).
+
 = 8.3.2 (2026-07-26) =
 * **Mejora**: Múltiples selectores de paginación y fallback para compatibilidad con cualquier tema (Astra, Flatsome, Storefront, etc.).
 * **Depuración**: Logs detallados en consola (activables con DEBUG = true).
@@ -115,6 +128,9 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Upgrade Notice ===
 
+= 8.3.2-fix =
+**CRÍTICO - SEGURIDAD**: Esta versión corrige múltiples vulnerabilidades críticas y altas (inyección SQL, XSS, exposición de datos). **Actualización obligatoria inmediata** para todos los usuarios. Mantiene todas las funcionalidades de la 8.3.2.
+
 = 8.3.2 =
 **Importante**: Esta versión incluye selectores de paginación ampliados, sistema de reintentos y logs de depuración. Se recomienda actualizar para mejorar la compatibilidad con temas variados.
 
@@ -132,5 +148,7 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Screenshots ===
 
-1. Pantalla de ajustes del plugin.
+1. Pantalla de ajustes del plugin con las nuevas opciones de seguridad.
 2. Ejemplo de scroll infinito en la tienda.
+3. Panel de configuración mostrando rate limiting y validación de URLs activas.
+4. Registro de auditoría de seguridad completada v8.3.2-fix.
