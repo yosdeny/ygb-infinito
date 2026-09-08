@@ -565,8 +565,18 @@ function ygb_infinito_uninstall() {
     
     // Limpiar transients de rate limiting usando $wpdb->prepare para seguridad
     global $wpdb;
-    $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_ygb_rate_limit_%'));
-    $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_timeout_ygb_rate_limit_%'));
+    $wpdb->query(
+        $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+            '_transient_ygb_rate_limit_%'
+        )
+    );
+    $wpdb->query(
+        $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+            '_transient_timeout_ygb_rate_limit_%'
+        )
+    );
 }
 
 add_action('plugins_loaded', function() {
