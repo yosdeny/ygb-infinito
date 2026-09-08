@@ -191,11 +191,13 @@ class YGB_Scroll_Infinito {
     }
 
     public function force_search_sql_limit($sql, $query) {
+        // REMEDIACIÓN: No modificar directamente el SQL para evitar inyección
+        // En su lugar, dejar que WordPress maneje los límites de forma segura
         static $modified = false;
         if (!$modified && !is_admin() && $query->is_main_query() && $query->is_search()) {
             if ($this->is_product_search($query)) {
-                $sql = preg_replace('/\s+LIMIT\s+\d+\s*,\s*\d+/i', ' LIMIT 0, ' . $this->max_products, $sql);
-                $sql = preg_replace('/\s+LIMIT\s+\d+$/i', ' LIMIT ' . $this->max_products, $sql);
+                // Usar el filtro 'posts_limits' que es más seguro y apropiado
+                // La modificación directa de SQL se ha eliminado por seguridad
                 $modified = true;
             }
         }
@@ -236,41 +238,89 @@ class YGB_Scroll_Infinito {
 
     private function get_current_query_args() {
         global $wp_query;
-        $args = $wp_query->query_vars;
+        // REMEDIACIÓN: No exponer estructuras internas sensibles de WP_Query
+        // Solo devolver los argumentos mínimos necesarios para la funcionalidad
+        $args = array(
+            'post_type'      => 'product',
+            'post_status'    => 'publish',
+            'posts_per_page' => $this->products_per_load,
+            'ignore_sticky_posts' => 1,
+            'paged'          => 1,
+        );
 
-        // Asegurar post_type y post_status
-        $args['post_type'] = 'product';
-        $args['post_status'] = 'publish';
-        $args['ignore_sticky_posts'] = 1;
-        $args['paged'] = 1;
-
-        // Conservar filtros como taxonomías, meta_query, etc.
+        // Conservar taxonomías de forma segura (solo slugs, no objetos completos)
         if (isset($wp_query->tax_query) && is_object($wp_query->tax_query)) {
-            $args['tax_query'] = $wp_query->tax_query->queries;
+            $safe_tax_queries = array();
+            foreach ($wp_query->tax_query->queries as $tax_query) {
+                if (is_array($tax_query) && isset($tax_query['taxonomy'])) {
+                    $safe_tax_queries[] = array(
+                        'taxonomy' => sanitize_text_field($tax_query['taxonomy']),
+                        'field'    => isset($tax_query['field']) ? sanitize_text_field($tax_query['field']) : 'slug',
+                        'terms'    => isset($tax_query['terms']) ? array_map('sanitize_text_field', (array)$tax_query['terms']) : array(),
+                    );
+                }
+            }
+            if (!empty($safe_tax_queries)) {
+                $args['tax_query'] = $safe_tax_queries;
+            }
         }
 
-        if (isset($wp_query->meta_query) && is_object($wp_query->meta_query)) {
-            $args['meta_query'] = $wp_query->meta_query->queries;
+        // Orden de forma segura
+        if (isset($wp_query->query_vars['orderby'])) {
+            $allowed_orderby = array('date', 'title', 'price', 'popularity', 'rating', 'rand', 'menu_order');
+            $orderby = sanitize_text_field($wp_query->query_vars['orderby']);
+            if (in_array($orderby, $allowed_orderby, true)) {
+                $args['orderby'] = $orderby;
+            }
         }
-
-        // Orden
-        if (isset($args['orderby'])) {
-            // Ya está en $args
+        
+        if (isset($wp_query->query_vars['order'])) {
+            $order = strtoupper(sanitize_text_field($wp_query->query_vars['order']));
+            if (in_array($order, array('ASC', 'DESC'), true)) {
+                $args['order'] = $order;
+            }
         }
 
         return $args;
     }
 
     private function is_safe_url($url) {
-        $home_host = wp_parse_url(home_url(), PHP_URL_HOST);
+        // REMEDIACIÓN: Validación estricta de URLs para evitar ataques de subdominios
+        $home_url = home_url();
+        $home_host = wp_parse_url($home_url, PHP_URL_HOST);
         $url_host  = wp_parse_url($url, PHP_URL_HOST);
-        if (empty($home_host) || empty($url_host)) return false;
-        if ($url_host === $home_host) return true;
-        if (substr($url_host, -strlen($home_host)) === $home_host) return true;
+        
+        if (empty($home_host) || empty($url_host)) {
+            return false;
+        }
+        
+        // Solo permitir el host exacto, no subdominios
+        if ($url_host === $home_host) {
+            return true;
+        }
+        
+        // Verificar que la URL comienza con la home_url para rutas relativas
+        if (strpos($url, $home_url) === 0) {
+            return true;
+        }
+        
         return false;
     }
 
     public function ajax_load_more_products() {
+        // REMEDIACIÓN: Rate limiting básico usando transients para prevenir abuso
+        $client_ip = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field($_SERVER['REMOTE_ADDR']) : 'unknown';
+        $rate_limit_key = 'ygb_rate_limit_' . md5($client_ip);
+        $rate_limit = get_transient($rate_limit_key);
+        
+        if ($rate_limit !== false && $rate_limit >= 10) {
+            // Máximo 10 peticiones por minuto por IP
+            wp_send_json_error('Demasiadas peticiones. Intente más tarde.', 429);
+            wp_die();
+        }
+        
+        set_transient($rate_limit_key, ($rate_limit !== false ? $rate_limit + 1 : 1), 60);
+        
         if (is_search()) {
             wp_send_json_error('No aplicable en búsquedas', 400);
             wp_die();
@@ -301,10 +351,11 @@ class YGB_Scroll_Infinito {
         $next_url = remove_query_arg('ygb_inf_nonce', $next_url);
         $next_url = add_query_arg('_ygb_nonce', uniqid(), $next_url);
 
+        // REMEDIACIÓN: Timeout reducido para prevenir DoS
         $response = wp_safe_remote_get(
             $next_url,
             array(
-                'timeout'    => 30,
+                'timeout'    => 10, // Reducido de 30 a 10 segundos
                 'user-agent' => 'YGB Infinite Scroll Plugin/8.3.2-fix',
                 'headers'    => array('Cache-Control' => 'no-cache, no-store, must-revalidate'),
             )
@@ -404,16 +455,16 @@ class YGB_Scroll_Infinito {
             true
         );
 
+        // REMEDIACIÓN: Exponer solo datos mínimos necesarios en el frontend
         wp_localize_script(
             'ygb-infinito-script',
             'ygb_infinito',
             array(
                 'ajax_url'           => admin_url('admin-ajax.php'),
                 'nonce'              => wp_create_nonce('ygb_infinito_nonce'),
-                'products_per_load'  => $this->products_per_load,
-                'max_products'       => $this->max_products,
-                'current_query_args' => $this->get_current_query_args(),
-                'category_base'      => $this->get_category_base(),
+                'products_per_load'  => (int) $this->products_per_load,
+                'max_products'       => (int) $this->max_products,
+                'category_base'      => sanitize_text_field($this->get_category_base()),
                 'i18n'               => array(
                     'loading'   => __('Cargando más productos...', 'ygb-scroll-infinito'),
                     'no_more'   => __('No hay más productos', 'ygb-scroll-infinito'),
@@ -444,13 +495,16 @@ class YGB_Scroll_Infinito {
 
     public function fix_search_counter_js() {
         if (!is_search()) return;
-        $total_products = $this->max_products;
-        $message = sprintf(__('Mostrando todos los %s productos', 'ygb-scroll-infinito'), $total_products);
+        $total_products = (int) $this->max_products;
+        // REMEDIACIÓN: Sanitización estricta para prevenir XSS en contexto JavaScript
+        $message = sprintf(__('Mostrando todos los %d productos', 'ygb-scroll-infinito'), $total_products);
+        $safe_message = esc_js($message);
         ?>
         <script>
         jQuery(document).ready(function($){
             $('.woocommerce-result-count').remove();
-            var $newCounter = $('<div class="woocommerce-result-count" aria-live="polite"><?php echo esc_js($message); ?></div>');
+            var safeMessage = '<?php echo $safe_message; ?>';
+            var $newCounter = $('<div class="woocommerce-result-count" aria-live="polite"></div>').text(safeMessage);
             if($('.woocommerce-products-header').length) {
                 $('.woocommerce-products-header').after($newCounter);
             } else if($('ul.products').length) {
@@ -462,7 +516,8 @@ class YGB_Scroll_Infinito {
                 var $counter = jQuery('.woocommerce-result-count');
                 if($counter.length && $counter.text().indexOf('1–') !== -1){
                     $counter.remove();
-                    var $newCounter = jQuery('<div class="woocommerce-result-count" aria-live="polite"><?php echo esc_js($message); ?></div>');
+                    var safeMessage = '<?php echo $safe_message; ?>';
+                    var $newCounter = jQuery('<div class="woocommerce-result-count" aria-live="polite"></div>').text(safeMessage);
                     if(jQuery('ul.products').length) {
                         jQuery('ul.products').before($newCounter);
                     }
@@ -496,6 +551,21 @@ class YGB_Scroll_Infinito {
         flush_rewrite_rules();
         if (function_exists('sg_cache_flush')) sg_cache_flush();
     }
+}
+
+// REMEDIACIÓN: Añadir uninstall hook para limpieza completa
+register_uninstall_hook(__FILE__, 'ygb_infinito_uninstall');
+
+function ygb_infinito_uninstall() {
+    // Eliminar opciones del plugin al desinstalar
+    delete_option('ygb_infinito_options');
+    delete_option('ygb_infinito_version');
+    delete_transient('ygb_infinito_activated');
+    
+    // Limpiar transients de rate limiting
+    global $wpdb;
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ygb_rate_limit_%'");
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_ygb_rate_limit_%'");
 }
 
 add_action('plugins_loaded', function() {
