@@ -80,7 +80,7 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Changelog ===
 
-= 8.3.2-fix (2026-07-27) =
+= 8.3.2-fix (2026-09-08) =
 * **CRÍTICO - Seguridad**: Eliminada vulnerabilidad de inyección SQL en `force_search_sql_limit()` - ya no se modifica directamente la consulta SQL con regex peligrosos.
 * **CRÍTICO - Seguridad**: Corregido XSS reflejado en `fix_search_counter_js()` - ahora se sanitiza rigurosamente con `esc_js()` y `.text()` de jQuery.
 * **CRÍTICO - Seguridad**: Validación estricta de URLs en `is_safe_url()` - previene ataques mediante subdominios maliciosos verificando el host exacto.
