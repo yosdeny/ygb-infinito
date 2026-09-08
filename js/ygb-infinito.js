@@ -3,11 +3,10 @@
  */
 jQuery(function($) {
     if (window.location.href.indexOf('s=') !== -1) {
-        console.log('[YGB] Búsqueda detectada - scroll infinito desactivado');
         return;
     }
 
-    var DEBUG = true;  // Cambiar a false en producción
+    var DEBUG = false;  // Cambiar a false en producción
     var loading = false;
     var hasMore = true;
     var nextUrl = null;
@@ -374,12 +373,4 @@ jQuery(function($) {
             }
         }, 500);
     });
-
-    window.ygb_infinito_debug = {
-        loadMore: loadMoreProducts,
-        getNextUrl: getNextPageUrl,
-        state: function() {
-            return { loading: loading, hasMore: hasMore, nextUrl: nextUrl, retryCount: retryCount };
-        }
-    };
 });
