@@ -381,6 +381,7 @@ class YGB_Scroll_Infinito {
     }
 
     private function extract_products_from_html($html) {
+        // REMEDIACIÓN: Eliminar scripts y estilos para prevenir XSS en contenido insertado
         $html = preg_replace('/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/i', '', $html);
         $html = preg_replace('/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/i', '', $html);
 
@@ -562,10 +563,10 @@ function ygb_infinito_uninstall() {
     delete_option('ygb_infinito_version');
     delete_transient('ygb_infinito_activated');
     
-    // Limpiar transients de rate limiting
+    // Limpiar transients de rate limiting usando $wpdb->prepare para seguridad
     global $wpdb;
-    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ygb_rate_limit_%'");
-    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_ygb_rate_limit_%'");
+    $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_ygb_rate_limit_%'));
+    $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_timeout_ygb_rate_limit_%'));
 }
 
 add_action('plugins_loaded', function() {
