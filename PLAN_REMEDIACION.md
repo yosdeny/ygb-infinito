@@ -63,12 +63,12 @@ Se ha ejecutado un plan de remediación completo para las vulnerabilidades crít
 - Comentado el cambio para documentación futura
 
 ### 8. MEJORA: Falta de uninstall hook (Línea 556-569)
-**Problema:** El plugin no limpiaba sus datos al ser desinstalado.
+**Problema:** El plugin no limpiaba sus datos al ser desinstalado y usaba queries SQL sin preparar.
 **Solución Implementada:**
 - Añadido `register_uninstall_hook()` con función dedicada
 - Limpieza de opciones: `ygb_infinito_options`, `ygb_infinito_version`
 - Limpieza de transient de activación
-- Limpieza de transients de rate limiting mediante queries directas a la BD
+- Limpieza de transients de rate limiting mediante queries con `$wpdb->prepare()` para seguridad
 
 ## Cambios Adicionales de Seguridad
 
@@ -83,7 +83,17 @@ Se ha ejecutado un plan de remediación completo para las vulnerabilidades crít
 - Separación clara entre lógica de negocio y presentación
 
 ## Verificación
-El archivo modificado `/workspace/ygb-infinito.php` contiene 8 marcas de "REMEDIACIÓN" correspondientes a cada vulnerabilidad abordada.
+El archivo modificado `/workspace/ygb-infinito.php` contiene 9 marcas de "REMEDIACIÓN" correspondientes a cada vulnerabilidad abordada:
+
+1. Línea 194: Eliminación de modificación directa de SQL
+2. Línea 241: Protección de estructuras internas de WP_Query
+3. Línea 288: Validación estricta de URLs
+4. Línea 311: Rate limiting en endpoint AJAX
+5. Línea 354: Timeout reducido para peticiones remotas
+6. Línea 384: Limpieza de scripts/estilos en HTML insertado (XSS)
+7. Línea 459: Minimización de datos expuestos en frontend
+8. Línea 500: Sanitización para prevenir XSS en JavaScript
+9. Línea 557: Uninstall hook con consultas preparadas
 
 ## Recomendaciones Pendientes
 1. **Testing**: Ejecutar pruebas funcionales completas para verificar que las características principales siguen operativas
