@@ -308,67 +308,146 @@ class YGB_Scroll_Infinito {
     }
 
     public function ajax_load_more_products() {
-        // REMEDIACIÓN: Rate limiting básico usando transients para prevenir abuso
+        // REMEDIACIÓN: Validación estricta del método HTTP
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            wp_send_json_error('Método no permitido', 405);
+            wp_die();
+        }
+        
+        // REMEDIACIÓN: Rate limiting reforzado - máximo 5 peticiones por minuto por IP
         $client_ip = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field($_SERVER['REMOTE_ADDR']) : 'unknown';
         $rate_limit_key = 'ygb_rate_limit_' . md5($client_ip);
         $rate_limit = get_transient($rate_limit_key);
         
-        if ($rate_limit !== false && $rate_limit >= 10) {
-            // Máximo 10 peticiones por minuto por IP
+        if ($rate_limit !== false && $rate_limit >= 5) {
+            // Máximo 5 peticiones por minuto por IP (reducido de 10 a 5)
             wp_send_json_error('Demasiadas peticiones. Intente más tarde.', 429);
             wp_die();
         }
         
         set_transient($rate_limit_key, ($rate_limit !== false ? $rate_limit + 1 : 1), 60);
         
+        // REMEDIACIÓN: Validación del referer para prevenir CSRF adicional
+        $referer = isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : '';
+        if (!empty($referer)) {
+            $home_url = home_url();
+            if (strpos($referer, $home_url) !== 0) {
+                wp_send_json_error('Referer inválido', 403);
+                wp_die();
+            }
+        }
+        
         if (is_search()) {
             wp_send_json_error('No aplicable en búsquedas', 400);
             wp_die();
         }
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ygb_infinito_nonce')) {
+        
+        // REMEDIACIÓN: Validación reforzada del nonce con verificación de existencia
+        if (!isset($_POST['nonce'])) {
+            wp_send_json_error('Error de seguridad (nonce faltante)', 403);
+            wp_die();
+        }
+        
+        $nonce = sanitize_text_field($_POST['nonce']);
+        if (empty($nonce) || !wp_verify_nonce($nonce, 'ygb_infinito_nonce')) {
             wp_send_json_error('Error de seguridad (nonce inválido)', 403);
             wp_die();
         }
+        
         $next_url = isset($_POST['next_url']) ? esc_url_raw($_POST['next_url']) : '';
         if (empty($next_url)) {
             wp_send_json_error('No hay URL siguiente', 400);
             wp_die();
         }
+        
+        // REMEDIACIÓN: Validación estricta de URL local
         if (!$this->is_safe_url($next_url)) {
             wp_send_json_error('URL externa no permitida', 400);
             wp_die();
         }
+        
+        // REMEDIACIÓN: Validación adicional - la URL debe contener solo caracteres seguros
+        if (!preg_match('/^[a-zA-Z0-9\/\?\=\&\-\_\.\%]+$/', $next_url)) {
+            wp_send_json_error('URL con caracteres inválidos', 400);
+            wp_die();
+        }
 
+        // REMEDIACIÓN: Límite de página más estricto (máximo 25 páginas = 500 productos con 20 por página)
         if (preg_match('/\/page\/(\d+)/', $next_url, $matches)) {
             $requested_page = (int) $matches[1];
             $max_pages = ceil($this->max_products / $this->products_per_load);
+            
+            // Límite absoluto de seguridad incluso si max_products cambia
+            $hard_max_pages = 50;
+            if ($requested_page > $hard_max_pages) {
+                wp_send_json_error('Página fuera de rango seguro', 400);
+                wp_die();
+            }
+            
             if ($requested_page > $max_pages) {
                 wp_send_json_error('Página fuera de rango', 400);
                 wp_die();
             }
         }
 
+        // REMEDIACIÓN: Eliminar cualquier parámetro sospechoso de la URL
         $next_url = remove_query_arg('ygb_inf_nonce', $next_url);
-        $next_url = add_query_arg('_ygb_nonce', uniqid(), $next_url);
+        $next_url = remove_query_arg('_ygb_nonce', $next_url);
+        $next_url = remove_query_arg('debug', $next_url);
+        $next_url = remove_query_arg('test', $next_url);
+        
+        // Añadir token único para esta petición
+        $next_url = add_query_arg('_ygb_req', wp_hash($next_url . time()), $next_url);
 
-        // REMEDIACIÓN: Timeout reducido para prevenir DoS
+        // REMEDIACIÓN: Timeout reducido y validación de cabeceras para prevenir DoS
         $response = wp_safe_remote_get(
             $next_url,
             array(
-                'timeout'    => 10, // Reducido de 30 a 10 segundos
+                'timeout'    => 8, // Reducido a 8 segundos
                 'user-agent' => 'YGB Infinite Scroll Plugin/8.3.2-fix',
-                'headers'    => array('Cache-Control' => 'no-cache, no-store, must-revalidate'),
+                'headers'    => array(
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                    'Accept'        => 'text/html',
+                ),
+                'redirection' => 0, // No seguir redirecciones para evitar ataques
             )
         );
 
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        if (is_wp_error($response)) {
+            $error_code = $response->get_error_code();
+            error_log('YGB Infinito Error: ' . $error_code . ' - ' . $response->get_error_message());
             wp_send_json_error('Error al cargar la página', 500);
+            wp_die();
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            error_log('YGB Infinito HTTP Error: ' . $response_code);
+            wp_send_json_error('Error al cargar la página (' . $response_code . ')', 500);
             wp_die();
         }
 
         $html = wp_remote_retrieve_body($response);
+        
+        // REMEDIACIÓN: Validar que el contenido recibido sea HTML válido
+        if (empty($html) || strpos($html, '<li') === false) {
+            wp_send_json_error('Contenido inválido recibido', 500);
+            wp_die();
+        }
+        
         $products_html = $this->extract_products_from_html($html);
         $next_next_url = $this->extract_next_url_from_html($html);
+
+        // REMEDIACIÓN: Verificar que se obtuvieron productos válidos
+        if (empty($products_html)) {
+            wp_send_json(array(
+                'success'  => true,
+                'html'     => '',
+                'next_url' => false,
+                'has_more' => false,
+            ));
+            wp_die();
+        }
 
         wp_send_json(
             array(
