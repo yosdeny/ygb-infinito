@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 Tested PHP: 8.2
 WC requires at least: 7.0
-Stable tag: 8.3.2-fix
+Stable tag: 8.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -80,6 +80,23 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Changelog ===
 
+= 8.3.3 (2026-09-11) =
+* **MEDIA - Seguridad**: Reforzadas validaciones en endpoint AJAX público `ygb_infinito_load_more` manteniendo acceso público.
+* **Seguridad**: Validación estricta del método HTTP (solo POST permitido).
+* **Seguridad**: Rate limiting reforzado reducido a 5 peticiones/minuto por IP (antes 10).
+* **Seguridad**: Validación del referer HTTP para prevención adicional de CSRF.
+* **Seguridad**: Validación reforzada del nonce con verificación explícita de existencia.
+* **Seguridad**: Validación estricta de URL local con regex de caracteres seguros.
+* **Seguridad**: Límites de página más estrictos (máximo 50 páginas absoluto).
+* **Seguridad**: Limpieza de parámetros sospechosos de la URL antes de la petición.
+* **Seguridad**: Token único por petición para tracking y auditoría.
+* **Rendimiento**: Timeout reducido a 8 segundos en peticiones remotas.
+* **Seguridad**: Bloqueo explícito de redirecciones en peticiones HTTP.
+* **Seguridad**: Validación exhaustiva de código de respuesta HTTP con logging detallado.
+* **Seguridad**: Validación de contenido HTML recibido antes de inyectar en el DOM.
+* **Mejora**: Manejo graceful cuando no hay productos disponibles.
+* **Compatibilidad**: Mantenidas todas las funcionalidades de scroll infinito y búsquedas completas.
+
 = 8.3.2-fix (2026-09-08) =
 * **CRÍTICO - Seguridad**: Eliminada vulnerabilidad de inyección SQL en `force_search_sql_limit()` - ya no se modifica directamente la consulta SQL con regex peligrosos.
 * **CRÍTICO - Seguridad**: Corregido XSS reflejado en `fix_search_counter_js()` - ahora se sanitiza rigurosamente con `esc_js()` y `.text()` de jQuery.
@@ -127,6 +144,9 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 * Funcionalidad básica de scroll infinito y búsquedas completas.
 
 === Upgrade Notice ===
+
+= 8.3.3 =
+**SEGURIDAD**: Esta versión refuerza las validaciones del endpoint AJAX público `ygb_infinito_load_more` con rate limiting más estricto (5 peticiones/min), validación de referer, nonce reforzado, límites de página más estrictos y validación exhaustiva de respuestas HTTP. Se recomienda actualizar para mejorar la seguridad manteniendo la funcionalidad pública.
 
 = 8.3.2-fix =
 **CRÍTICO - SEGURIDAD**: Esta versión corrige múltiples vulnerabilidades críticas y altas (inyección SQL, XSS, exposición de datos). **Actualización obligatoria inmediata** para todos los usuarios. Mantiene todas las funcionalidades de la 8.3.2.
