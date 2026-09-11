@@ -3,7 +3,7 @@
  * Plugin Name: YGB Scroll Infinito WooCommerce
  * Plugin URI: https://github.com/yosdeny
  * Description: Scroll infinito en tienda/categorías + Muestra todos los resultados en búsquedas
- * Version: 8.3.2-fix
+ * Version: 8.3.3
  * Author: YGB
  * Author URI: https://github.com/yosdeny
  * Text Domain: ygb-scroll-infinito
@@ -16,7 +16,7 @@
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  *
  * @package YGB_Scroll_Infinito
- * @version 8.3.2-fix
+ * @version 8.3.3
  */
 
 if (!defined('ABSPATH')) {
@@ -404,7 +404,7 @@ class YGB_Scroll_Infinito {
             $next_url,
             array(
                 'timeout'    => 8, // Reducido a 8 segundos
-                'user-agent' => 'YGB Infinite Scroll Plugin/8.3.2-fix',
+                'user-agent' => 'YGB Infinite Scroll Plugin/8.3.3',
                 'headers'    => array(
                     'Cache-Control' => 'no-cache, no-store, must-revalidate',
                     'Accept'        => 'text/html',
@@ -531,7 +531,7 @@ class YGB_Scroll_Infinito {
             'ygb-infinito-script',
             $this->plugin_url . 'js/ygb-infinito.js',
             array('jquery'),
-            '8.3.2-fix',
+            '8.3.3',
             true
         );
 
@@ -562,7 +562,7 @@ class YGB_Scroll_Infinito {
                     'ygb-infinito-style',
                     $this->plugin_url . 'css/ygb-infinito.css',
                     array(),
-                    '8.3.2-fix'
+                    '8.3.3'
                 );
             }
         }
@@ -621,7 +621,7 @@ class YGB_Scroll_Infinito {
         if (!get_option('ygb_infinito_options')) {
             add_option('ygb_infinito_options', $default_options);
         }
-        update_option('ygb_infinito_version', '8.3.2-fix');
+        update_option('ygb_infinito_version', '8.3.3');
         set_transient('ygb_infinito_activated', true, 30);
         if (function_exists('sg_cache_flush')) sg_cache_flush();
     }
@@ -675,7 +675,7 @@ add_action('admin_notices', function() {
         delete_transient('ygb_infinito_activated');
         if (current_user_can('manage_options')) {
             echo '<div class="notice notice-success is-dismissible"><p>' .
-                esc_html__('✅ YGB Scroll Infinito 8.3.2-fix activado. Corrección de errores y compatibilidad mejorada.', 'ygb-scroll-infinito') .
+                esc_html__('✅ YGB Scroll Infinito 8.3.3 activado. Validaciones de seguridad reforzadas en endpoint AJAX público.', 'ygb-scroll-infinito') .
                 '</p></div>';
         }
     }
