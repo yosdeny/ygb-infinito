@@ -2,11 +2,11 @@
 Contributors: ygb
 Tags: woocommerce, infinite scroll, scroll infinito, pagination, shop, categories, search, products, ajax, performance
 Requires at least: 7.0
-Tested up to: 7.1
+Tested up to: 7.1.2
 Requires PHP: 8.0
 Tested PHP: 8.2
 WC requires at least: 7.0
-Stable tag: 8.3.3
+Stable tag: 8.3.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -32,6 +32,7 @@ Scroll infinito para tienda y categorías de WooCommerce, con límite configurab
 * **Selectores de paginación ampliados**: compatible con una amplia variedad de temas.
 * **Sistema de reintentos**: si la carga falla, reintenta automáticamente hasta 3 veces.
 * **Depuración**: logs detallados en consola (activables/desactivables con `DEBUG`).
+* **Anti-bucle**: en la última página no repite la carga ni genera saltos visuales. Se detiene y muestra "No hay más productos".
 
 === Instalación ===
 
@@ -78,7 +79,29 @@ Asegúrate de usar la versión 8.3.2 o superior. Esta versión incluye notificac
 
 Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad específica con LiteSpeed. Si el problema persiste, prueba a desactivar la opción "Aplazar JS" o "Minimizado de JS" en LiteSpeed, o añade el script `ygb-infinito.js` a la lista de exclusión de aplazamiento. También puedes forzar la recarga de la página después de activar el plugin para que los cambios surtan efecto.
 
+= Al llegar al final de la lista, el scroll empieza a saltar y a cargar productos en bucle, ¿qué hago? =
+
+Actualiza a la versión 8.3.5 o superior. Esta versión incluye una triple capa de protección anti-bucle: (1) el servidor rechaza URLs de paginación repetidas o con número de página no creciente, (2) el JavaScript registra cada URL pedida y detiene la carga cuando detecta una URL ya solicitada o cuando el DOM no crece, y (3) existe un tope absoluto de 100 páginas como red de seguridad. Al llegar al final aparece el mensaje "No hay más productos" y el scroll se detiene.
+
 === Changelog ===
+
+= 8.3.5 (2026-09-29) =
+* **CRÍTICO — Anti-bucle en la última página**: corregido el bucle infinito que hacía que al llegar al final de la lista el plugin intentara cargar más productos una y otra vez, produciendo un efecto de salto y saltos repetidos en lugar de mostrar "No hay más productos" y detenerse.
+  * **Servidor (`ygb-infinito.php`)**: se comprueba que la URL "siguiente" extraída del HTML no sea la misma que la que se acaba de pedir ni tenga un número de página menor o igual al actual. Antes, cualquier `<a>` con "next" en la clase dentro del HTML remoto (botones de carrusel, sliders de producto, widgets de terceros) se interpretaba como paginación real y generaba un bucle.
+  * **Servidor**: la extracción de la URL "siguiente" ahora usa patrones mucho más estrictos que solo aceptan enlaces dentro de contenedores de paginación (`nav.woocommerce-pagination`, `nav.ast-pagination`) o con la clase exacta `next page-numbers`. Se elimina la coincidencia con cualquier `<a>` que contenga "next" en la clase.
+  * **Cliente (`ygb-infinito.js`)**: se añade un set `requestedUrls` que registra cada URL pedida. Si el servidor devuelve una URL ya solicitada, si devuelve la misma URL, o si el número de productos en el DOM no ha crecido tras una respuesta 200, se detiene la carga y se muestra el mensaje de "No hay más productos".
+  * **Cliente**: tope absoluto de 100 páginas como red de seguridad independiente de lo que diga el servidor.
+  * **Cliente**: el loader se oculta siempre al terminar cada petición (éxito, error o "no hay más"), y no se vuelve a disparar `loadMoreProducts()` cuando `hasMore` es `false`, eliminando el salto visual.
+* **Ajuste**: `Tested up to` a 7.1.2 (última versión real de WordPress disponible).
+* **Compatibilidad**: sin cambios funcionales respecto a 8.3.4 salvo el anti-bucle.
+
+= 8.3.4 (2026-09-29) =
+* **Ajuste**: `Tested up to` actualizado a 7.1.2 (última versión real de WordPress disponible).
+* **Ajuste**: Rate limiting del endpoint AJAX subido de 5 a 20 peticiones por minuto por IP. El valor anterior penalizaba el scroll rápido en móvil (scroll con inercia dispara varias cargas seguidas) y generaba 429 en usuarios legítimos, obligando al JS a reintentar.
+* **Limpieza**: eliminada la función `force_search_sql_limit()` y su `add_filter('posts_request', ...)`. La función no modificaba nada desde la corrección de seguridad de 8.3.2-fix y solo añadía una llamada por cada query de WordPress sin aportar valor.
+* **Limpieza**: eliminado el `add_query_arg('_ygb_req', wp_hash(...))` de la URL saliente del endpoint AJAX. Se añadía a la URL remota pero nunca se verificaba en destino, así que no cumplía función CSRF ni cache-busting útil. El nonce y las cabeceras de la petición ya cubren la seguridad.
+* **Logs**: los tres `error_log()` de `ajax_load_more_products()` ahora solo se ejecutan si `WP_DEBUG` está activo. En producción se evita llenar el log del hosting con errores de red transitorios.
+* **Compatibilidad**: sin cambios en el comportamiento funcional respecto a 8.3.3.
 
 = 8.3.3 (2026-09-11) =
 * **MEDIA - Seguridad**: Reforzadas validaciones en endpoint AJAX público `ygb_infinito_load_more` manteniendo acceso público.
@@ -145,6 +168,12 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Upgrade Notice ===
 
+= 8.3.5 =
+**CRÍTICO — ANTI-BUCLE**: corrige el bucle infinito en la última página que producía saltos visuales y cargas repetidas en lugar de detenerse. Triple capa de protección: servidor (URLs de paginación estrictas y sin repetición), cliente (registro de URLs pedidas y tope de 100 páginas) y DOM (no cargar si el número de productos no crece). Actualización recomendada para todos los usuarios. Purga caché tras actualizar.
+
+= 8.3.4 =
+**AJUSTES**: Se sube el rate limiting a 20/min para eliminar falsos 429 en móvil, se limpia dead code (`force_search_sql_limit`) y se elimina el `_ygb_req` inútil de la URL. Los `error_log()` ahora solo escriben con `WP_DEBUG` activo. Sin cambios funcionales.
+
 = 8.3.3 =
 **SEGURIDAD**: Esta versión refuerza las validaciones del endpoint AJAX público `ygb_infinito_load_more` con rate limiting más estricto (5 peticiones/min), validación de referer, nonce reforzado, límites de página más estrictos y validación exhaustiva de respuestas HTTP. Se recomienda actualizar para mejorar la seguridad manteniendo la funcionalidad pública.
 
@@ -168,7 +197,7 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 === Screenshots ===
 
-1. Pantalla de ajustes del plugin con las nuevas opciones de seguridad.
+1. Pantalla de ajustes del plugin con las opciones de configuración.
 2. Ejemplo de scroll infinito en la tienda.
 3. Panel de configuración mostrando rate limiting y validación de URLs activas.
-4. Registro de auditoría de seguridad completada v8.3.2-fix.
+4. Mensaje "No hay más productos" al llegar al final (comportamiento anti-bucle desde 8.3.5).

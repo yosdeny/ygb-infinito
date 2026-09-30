@@ -3,12 +3,12 @@
  * Plugin Name: YGB Scroll Infinito WooCommerce
  * Plugin URI: https://github.com/yosdeny
  * Description: Scroll infinito en tienda/categorías + Muestra todos los resultados en búsquedas
- * Version: 8.3.3
+ * Version: 8.3.5
  * Author: YGB
  * Author URI: https://github.com/yosdeny
  * Text Domain: ygb-scroll-infinito
  * Requires at least: 7.0
- * Tested up to: 7.1
+ * Tested up to: 7.1.2
  * Requires PHP: 8.0
  * Tested PHP: 8.2
  * WC requires at least: 7.0
@@ -16,7 +16,7 @@
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  *
  * @package YGB_Scroll_Infinito
- * @version 8.3.3
+ * @version 8.3.5
  */
 
 if (!defined('ABSPATH')) {
@@ -44,12 +44,14 @@ class YGB_Scroll_Infinito {
         $this->load_options();
 
         // Hooks principales de Query
+        // v8.3.4: eliminado add_filter('posts_request', ...) — la función
+        // force_search_sql_limit() no modificaba nada y solo añadía una
+        // llamada por cada query de WordPress sin aportar valor.
         add_action('pre_get_posts', array($this, 'remove_pagination'), 10, 1);
         add_action('woocommerce_product_query', array($this, 'remove_pagination_woocommerce'), 999, 1);
         add_filter('loop_shop_per_page', array($this, 'set_products_per_page'), 999);
         add_action('parse_query', array($this, 'force_search_limit'), 0, 1);
         add_filter('query_vars', array($this, 'force_search_query_vars'), 999, 1);
-        add_filter('posts_request', array($this, 'force_search_sql_limit'), 999, 2);
         add_action('woocommerce_product_query', array($this, 'force_woocommerce_search_limit'), 1, 1);
 
         // AJAX (usa wp_remote_get + regex)
@@ -190,20 +192,6 @@ class YGB_Scroll_Infinito {
         return $vars;
     }
 
-    public function force_search_sql_limit($sql, $query) {
-        // REMEDIACIÓN: No modificar directamente el SQL para evitar inyección
-        // En su lugar, dejar que WordPress maneje los límites de forma segura
-        static $modified = false;
-        if (!$modified && !is_admin() && $query->is_main_query() && $query->is_search()) {
-            if ($this->is_product_search($query)) {
-                // Usar el filtro 'posts_limits' que es más seguro y apropiado
-                // La modificación directa de SQL se ha eliminado por seguridad
-                $modified = true;
-            }
-        }
-        return $sql;
-    }
-
     public function force_woocommerce_search_limit($query) {
         if ($query->is_search()) {
             $query->set('posts_per_page', $this->max_products);
@@ -273,7 +261,7 @@ class YGB_Scroll_Infinito {
                 $args['orderby'] = $orderby;
             }
         }
-        
+
         if (isset($wp_query->query_vars['order'])) {
             $order = strtoupper(sanitize_text_field($wp_query->query_vars['order']));
             if (in_array($order, array('ASC', 'DESC'), true)) {
@@ -289,21 +277,21 @@ class YGB_Scroll_Infinito {
         $home_url = home_url();
         $home_host = wp_parse_url($home_url, PHP_URL_HOST);
         $url_host  = wp_parse_url($url, PHP_URL_HOST);
-        
+
         if (empty($home_host) || empty($url_host)) {
             return false;
         }
-        
+
         // Solo permitir el host exacto, no subdominios
         if ($url_host === $home_host) {
             return true;
         }
-        
+
         // Verificar que la URL comienza con la home_url para rutas relativas
         if (strpos($url, $home_url) === 0) {
             return true;
         }
-        
+
         return false;
     }
 
@@ -313,20 +301,21 @@ class YGB_Scroll_Infinito {
             wp_send_json_error('Método no permitido', 405);
             wp_die();
         }
-        
-        // REMEDIACIÓN: Rate limiting reforzado - máximo 5 peticiones por minuto por IP
+
+        // v8.3.4: rate limit subido de 5 a 20/min para no penalizar el scroll
+        // rápido en móvil (scroll con inercia dispara varias cargas seguidas)
+        // y para evitar 429 en usuarios legítimos.
         $client_ip = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field($_SERVER['REMOTE_ADDR']) : 'unknown';
         $rate_limit_key = 'ygb_rate_limit_' . md5($client_ip);
         $rate_limit = get_transient($rate_limit_key);
-        
-        if ($rate_limit !== false && $rate_limit >= 5) {
-            // Máximo 5 peticiones por minuto por IP (reducido de 10 a 5)
+
+        if ($rate_limit !== false && $rate_limit >= 20) {
             wp_send_json_error('Demasiadas peticiones. Intente más tarde.', 429);
             wp_die();
         }
-        
+
         set_transient($rate_limit_key, ($rate_limit !== false ? $rate_limit + 1 : 1), 60);
-        
+
         // REMEDIACIÓN: Validación del referer para prevenir CSRF adicional
         $referer = isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : '';
         if (!empty($referer)) {
@@ -336,38 +325,38 @@ class YGB_Scroll_Infinito {
                 wp_die();
             }
         }
-        
+
         if (is_search()) {
             wp_send_json_error('No aplicable en búsquedas', 400);
             wp_die();
         }
-        
+
         // REMEDIACIÓN: Validación reforzada del nonce con verificación de existencia
         if (!isset($_POST['nonce'])) {
             wp_send_json_error('Error de seguridad (nonce faltante)', 403);
             wp_die();
         }
-        
+
         $nonce = sanitize_text_field($_POST['nonce']);
         if (empty($nonce) || !wp_verify_nonce($nonce, 'ygb_infinito_nonce')) {
             wp_send_json_error('Error de seguridad (nonce inválido)', 403);
             wp_die();
         }
-        
+
         $next_url = isset($_POST['next_url']) ? esc_url_raw($_POST['next_url']) : '';
         if (empty($next_url)) {
             wp_send_json_error('No hay URL siguiente', 400);
             wp_die();
         }
-        
+
         // REMEDIACIÓN: Validación estricta de URL local
         if (!$this->is_safe_url($next_url)) {
             wp_send_json_error('URL externa no permitida', 400);
             wp_die();
         }
-        
+
         // REMEDIACIÓN: Validación adicional - la URL debe contener solo caracteres seguros
-        if (!preg_match('/^[a-zA-Z0-9\/\?\=\&\-\_\.\%]+$/', $next_url)) {
+        if (!preg_match('/^[a-zA-Z0-9\/\?\=\&\-\_\.\%\:]+$/', $next_url)) {
             wp_send_json_error('URL con caracteres inválidos', 400);
             wp_die();
         }
@@ -376,14 +365,14 @@ class YGB_Scroll_Infinito {
         if (preg_match('/\/page\/(\d+)/', $next_url, $matches)) {
             $requested_page = (int) $matches[1];
             $max_pages = ceil($this->max_products / $this->products_per_load);
-            
+
             // Límite absoluto de seguridad incluso si max_products cambia
             $hard_max_pages = 50;
             if ($requested_page > $hard_max_pages) {
                 wp_send_json_error('Página fuera de rango seguro', 400);
                 wp_die();
             }
-            
+
             if ($requested_page > $max_pages) {
                 wp_send_json_error('Página fuera de rango', 400);
                 wp_die();
@@ -395,16 +384,18 @@ class YGB_Scroll_Infinito {
         $next_url = remove_query_arg('_ygb_nonce', $next_url);
         $next_url = remove_query_arg('debug', $next_url);
         $next_url = remove_query_arg('test', $next_url);
-        
-        // Añadir token único para esta petición
-        $next_url = add_query_arg('_ygb_req', wp_hash($next_url . time()), $next_url);
+
+        // v8.3.4: eliminado el add_query_arg('_ygb_req', wp_hash(...), $next_url).
+        // Se añadía a la URL saliente pero nunca se verificaba en destino, así
+        // que no cumplía función CSRF y solo ensuciaba la URL. El nonce y las
+        // cabeceras de la petición ya cubren la seguridad necesaria.
 
         // REMEDIACIÓN: Timeout reducido y validación de cabeceras para prevenir DoS
         $response = wp_safe_remote_get(
             $next_url,
             array(
                 'timeout'    => 8, // Reducido a 8 segundos
-                'user-agent' => 'YGB Infinite Scroll Plugin/8.3.3',
+                'user-agent' => 'YGB Infinite Scroll Plugin/8.3.5',
                 'headers'    => array(
                     'Cache-Control' => 'no-cache, no-store, must-revalidate',
                     'Accept'        => 'text/html',
@@ -414,29 +405,70 @@ class YGB_Scroll_Infinito {
         );
 
         if (is_wp_error($response)) {
-            $error_code = $response->get_error_code();
-            error_log('YGB Infinito Error: ' . $error_code . ' - ' . $response->get_error_message());
+            // v8.3.4: error_log solo si WP_DEBUG está activo, para no
+            // llenar el log de producción con errores de red transitorios.
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('YGB Infinito Error: ' . $response->get_error_code() . ' - ' . $response->get_error_message());
+            }
             wp_send_json_error('Error al cargar la página', 500);
             wp_die();
         }
-        
+
         $response_code = wp_remote_retrieve_response_code($response);
         if ($response_code !== 200) {
-            error_log('YGB Infinito HTTP Error: ' . $response_code);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('YGB Infinito HTTP Error: ' . $response_code);
+            }
             wp_send_json_error('Error al cargar la página (' . $response_code . ')', 500);
             wp_die();
         }
 
         $html = wp_remote_retrieve_body($response);
-        
+
         // REMEDIACIÓN: Validar que el contenido recibido sea HTML válido
         if (empty($html) || strpos($html, '<li') === false) {
             wp_send_json_error('Contenido inválido recibido', 500);
             wp_die();
         }
-        
+
         $products_html = $this->extract_products_from_html($html);
         $next_next_url = $this->extract_next_url_from_html($html);
+
+        // v8.3.5: ANTI-BUCLE. Comprobar que la URL siguiente no sea la misma
+        // que acabamos de pedir ni una página con número <= al actual. Sin esto,
+        // en la última página el HTML a veces sigue conteniendo un enlace "next"
+        // (de otro widget, carrusel, etc.) y el JS entra en bucle infinito
+        // pidiendo la misma página una y otra vez.
+        if ($next_next_url !== false) {
+            // Normalizar para comparar sin query strings ni barras finales.
+            $current_norm = untrailingslashit($next_url);
+            $next_norm    = untrailingslashit($next_next_url);
+
+            if ($current_norm === $next_norm) {
+                $next_next_url = false;
+            } else {
+                // Extraer número de página de ambas URLs (formato /page/N/).
+                $current_page_num = 0;
+                $next_page_num    = 0;
+
+                if (preg_match('/\/page\/(\d+)/', $next_url, $m)) {
+                    $current_page_num = (int) $m[1];
+                }
+                if (preg_match('/\/page\/(\d+)/', $next_next_url, $m)) {
+                    $next_page_num = (int) $m[1];
+                }
+
+                // Si ambas tienen número de página y la siguiente NO es
+                // estrictamente mayor, no hay más productos.
+                if ($current_page_num > 0 && $next_page_num > 0 && $next_page_num <= $current_page_num) {
+                    $next_next_url = false;
+                }
+
+                // Si la URL siguiente no tiene número de página pero la actual
+                // sí (raro), aceptarla solo si es distinta de la actual.
+                // Ya cubierto arriba por $current_norm === $next_norm.
+            }
+        }
 
         // REMEDIACIÓN: Verificar que se obtuvieron productos válidos
         if (empty($products_html)) {
@@ -484,10 +516,20 @@ class YGB_Scroll_Infinito {
     }
 
     private function extract_next_url_from_html($html) {
+        // v8.3.5: patrones más estrictos. Antes se aceptaba cualquier <a>
+        // con "next" en la clase, lo que capturaba botones "siguiente" de
+        // carruseles, sliders de producto o widgets de terceros. Eso hacía
+        // que el scroll infinito creyera que había más páginas en la última
+        // y entrara en bucle. Ahora solo se aceptan enlaces dentro de
+        // contenedores de paginación de WooCommerce/Astra.
         $patterns = array(
-            '/<a[^>]*class="[^"]*next[^"]*"[^>]*href="([^"]+)"/i',
-            '/<a[^>]*href="([^"]+)"[^>]*class="[^"]*next[^"]*"/i',
+            // WooCommerce estándar: nav.woocommerce-pagination
+            '/<nav[^>]*class="[^"]*woocommerce-pagination[^"]*"[^>]*>.*?<a[^>]*class="[^"]*next[^"]*"[^>]*href="([^"]+)"/is',
+            // Astra: nav.ast-pagination
+            '/<nav[^>]*class="[^"]*ast-pagination[^"]*"[^>]*>.*?<a[^>]*class="[^"]*next[^"]*"[^>]*href="([^"]+)"/is',
+            // Fallback: enlace con clase exacta "next page-numbers" en cualquier parte
             '/<a[^>]*class="[^"]*next page-numbers[^"]*"[^>]*href="([^"]+)"/i',
+            '/<a[^>]*href="([^"]+)"[^>]*class="[^"]*next page-numbers[^"]*"/i',
         );
 
         foreach ($patterns as $pattern) {
@@ -531,7 +573,7 @@ class YGB_Scroll_Infinito {
             'ygb-infinito-script',
             $this->plugin_url . 'js/ygb-infinito.js',
             array('jquery'),
-            '8.3.3',
+            '8.3.5',
             true
         );
 
@@ -562,7 +604,7 @@ class YGB_Scroll_Infinito {
                     'ygb-infinito-style',
                     $this->plugin_url . 'css/ygb-infinito.css',
                     array(),
-                    '8.3.3'
+                    '8.3.5'
                 );
             }
         }
@@ -621,7 +663,7 @@ class YGB_Scroll_Infinito {
         if (!get_option('ygb_infinito_options')) {
             add_option('ygb_infinito_options', $default_options);
         }
-        update_option('ygb_infinito_version', '8.3.3');
+        update_option('ygb_infinito_version', '8.3.5');
         set_transient('ygb_infinito_activated', true, 30);
         if (function_exists('sg_cache_flush')) sg_cache_flush();
     }
@@ -641,7 +683,7 @@ function ygb_infinito_uninstall() {
     delete_option('ygb_infinito_options');
     delete_option('ygb_infinito_version');
     delete_transient('ygb_infinito_activated');
-    
+
     // Limpiar transients de rate limiting usando $wpdb->prepare para seguridad
     global $wpdb;
     $wpdb->query(
@@ -675,7 +717,7 @@ add_action('admin_notices', function() {
         delete_transient('ygb_infinito_activated');
         if (current_user_can('manage_options')) {
             echo '<div class="notice notice-success is-dismissible"><p>' .
-                esc_html__('✅ YGB Scroll Infinito 8.3.3 activado. Validaciones de seguridad reforzadas en endpoint AJAX público.', 'ygb-scroll-infinito') .
+                esc_html__('✅ YGB Scroll Infinito 8.3.5 activado. Bucle infinito en la última página corregido.', 'ygb-scroll-infinito') .
                 '</p></div>';
         }
     }
