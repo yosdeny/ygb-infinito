@@ -1,28 +1,21 @@
 /**
- * YGB Scroll Infinito - v8.3.5
+ * YGB Scroll Infinito - v8.3.6
  *
- * Cambios v8.3.5:
- *  - ANTI-BUCLE: si la respuesta del servidor no trae productos nuevos
- *    o trae una URL "siguiente" igual/duplicada, se detiene y se muestra
- *    el mensaje de "no hay más productos". Antes se reintentaba hasta
- *    agotar los 3 reintentos y luego se rendía, produciendo el salto.
- *  - ANTI-BUCLE: se guarda un set de URLs ya pedidas; si nextUrl ya
- *    estaba en el set, hasMore = false y se muestra "no hay más".
- *  - ANTI-BUCLE: guard máximo de páginas (100) como red de seguridad
- *    independientemente de lo que diga el servidor.
- *  - Contador de productos para detectar cuando el DOM no crece aunque
- *    el servidor devuelva 200 y HTML aparentemente válido.
- *  - El loader se muestra solo durante la petición y se oculta siempre
- *    al terminar (éxito, error, o "no hay más").
- *  - Deja de disparar loadMoreProducts() cuando hasMore = false, así
- *    el evento scroll del final de la página no genera saltos.
+ * Cambios v8.3.6:
+ *  - MAX_PAGES calculado a partir de los ajustes reales (max_products /
+ *    products_per_load) para no truncar tiendas grandes.
+ *  - Eliminadas variables globales implícitas (totalProductsFound,
+ *    totalProductsLoaded), que además no se leían.
+ *  - updateCounter() usa una regex agnóstica al idioma del tema.
+ *  - Sin cambios funcionales respecto al anti-bucle de 8.3.5.
  */
 jQuery(function($) {
     if (window.location.href.indexOf('s=') !== -1) {
         return;
     }
 
-    var DEBUG = false;  // Cambiar a false en producción
+    var DEBUG = false; // Cambiar a true solo en desarrollo.
+
     var loading = false;
     var hasMore = true;
     var nextUrl = null;
@@ -30,39 +23,34 @@ jQuery(function($) {
     var retryCount = 0;
     var MAX_RETRIES = 3;
 
-    // v8.3.5: control de bucles.
-    var requestedUrls = {};       // URLs ya pedidas en esta sesión.
-    var pageCount = 0;            // Nº de páginas cargadas por AJAX.
-    var MAX_PAGES = 100;          // Red de seguridad absoluta.
-    var lastProductCount = 0;     // Para detectar DOM que no crece.
+    var requestedUrls = {};
+    var pageCount = 0;
+    var lastProductCount = 0;
+
+    // v8.3.6: tope calculado desde los ajustes reales. Antes era 100 fijo y
+    // truncaba tiendas con max_products alto y products_per_load bajo.
+    var configuredMax = parseInt(ygb_infinito.max_products, 10) || 500;
+    var perLoad = parseInt(ygb_infinito.products_per_load, 10) || 20;
+    var MAX_PAGES = Math.max(100, Math.ceil(configuredMax / perLoad) + 10);
 
     function log(msg, data) {
         if (DEBUG) {
-            if (data !== undefined) {
-                console.log('[YGB] ' + msg, data);
-            } else {
-                console.log('[YGB] ' + msg);
-            }
+            if (data !== undefined) { console.log('[YGB] ' + msg, data); }
+            else { console.log('[YGB] ' + msg); }
         }
     }
 
     function warn(msg, data) {
         if (DEBUG) {
-            if (data !== undefined) {
-                console.warn('[YGB] ' + msg, data);
-            } else {
-                console.warn('[YGB] ' + msg);
-            }
+            if (data !== undefined) { console.warn('[YGB] ' + msg, data); }
+            else { console.warn('[YGB] ' + msg); }
         }
     }
 
     function error(msg, data) {
         if (DEBUG) {
-            if (data !== undefined) {
-                console.error('[YGB] ' + msg, data);
-            } else {
-                console.error('[YGB] ' + msg);
-            }
+            if (data !== undefined) { console.error('[YGB] ' + msg, data); }
+            else { console.error('[YGB] ' + msg); }
         }
     }
 
@@ -70,7 +58,6 @@ jQuery(function($) {
         if (!url || typeof url !== 'string') {
             return '';
         }
-        // Quitar query string y barra final para comparar URLs equivalentes.
         var base = url.split('?')[0];
         if (base.length > 1 && base.charAt(base.length - 1) === '/') {
             base = base.slice(0, -1);
@@ -145,30 +132,25 @@ jQuery(function($) {
         var counter = $('.woocommerce-result-count');
         if (counter.length) {
             var currentText = counter.text();
-            var newText = currentText.replace(/Mostrando \d+[–-]\d+/, 'Mostrando 1–' + productCount);
+            // Regex agnóstica al idioma: sustituye cualquier "N–M".
+            var newText = currentText.replace(/\d+\s*[–\-]\s*\d+/, '1–' + productCount);
             counter.text(newText);
         }
         log('Contador actualizado: ' + productCount + ' productos cargados');
     }
 
-    function getTotalProducts() {
-        var counter = $('.woocommerce-result-count').text();
-        var match = counter.match(/de (\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
-    }
-
     function init() {
         nextUrl = getNextPageUrl();
         hasMore = (nextUrl !== false);
-        totalProductsFound = getTotalProducts();
-        totalProductsLoaded = $('ul.products li.product').length;
-        lastProductCount = totalProductsLoaded;
+        lastProductCount = $('ul.products li.product').length;
         $('.woocommerce-pagination, .astra-pagination').hide();
-        log('Inicializado. Productos: ' + totalProductsLoaded + '/' + totalProductsFound + ', nextUrl: ' + nextUrl);
+
+        log('Inicializado. Productos: ' + lastProductCount + ', nextUrl: ' + nextUrl);
+        log('MAX_PAGES configurado en ' + MAX_PAGES);
+
         if (!hasMore) {
             warn('No hay más productos desde el inicio.');
         } else {
-            // Registrar la URL inicial para no repetirla.
             requestedUrls[normalizeUrl(nextUrl)] = true;
         }
     }
@@ -186,7 +168,6 @@ jQuery(function($) {
             log('vanilla-lazyload actualizado');
         }
 
-        // LiteSpeed - múltiples estrategias
         function activateLiteSpeed() {
             var ls = window.LiteSpeed || window.litespeed || window.LS;
             if (ls) {
@@ -204,10 +185,7 @@ jQuery(function($) {
                     }
                 }
                 if (typeof ls === 'function') {
-                    try {
-                        ls();
-                        return true;
-                    } catch (e) {}
+                    try { ls(); return true; } catch (e) {}
                 }
                 return false;
             }
@@ -258,16 +236,9 @@ jQuery(function($) {
     }
 
     function loadMoreProducts() {
-        if (loading) {
-            log('Carga en progreso, ignorando.');
-            return;
-        }
-        if (!hasMore) {
-            log('No hay más productos (hasMore=false)');
-            return;
-        }
+        if (loading) { log('Carga en progreso, ignorando.'); return; }
+        if (!hasMore) { log('No hay más productos (hasMore=false)'); return; }
 
-        // v8.3.5: red de seguridad absoluta.
         if (pageCount >= MAX_PAGES) {
             warn('Máximo absoluto de páginas alcanzado (' + MAX_PAGES + '). Deteniendo.');
             showEndMessage();
@@ -282,7 +253,6 @@ jQuery(function($) {
                 warn('No se pudo obtener nextUrl, deteniendo.');
                 return;
             }
-            // Comprobar que no sea una URL ya pedida.
             var normalized = normalizeUrl(nextUrl);
             if (requestedUrls[normalized]) {
                 warn('La URL obtenida ya fue pedida: ' + normalized);
@@ -292,7 +262,6 @@ jQuery(function($) {
             requestedUrls[normalized] = true;
         }
 
-        // v8.3.5: anti-bucle. Comprobar que la URL no haya sido pedida antes.
         var normNext = normalizeUrl(nextUrl);
         if (requestedUrls[normNext] && pageCount > 0) {
             warn('URL repetida detectada, deteniendo: ' + normNext);
@@ -335,7 +304,6 @@ jQuery(function($) {
                         loadedSomething = true;
                         pageCount++;
 
-                        // v8.3.5: comprobar que el DOM ha crecido realmente.
                         var currentCount = $('ul.products li.product').length;
                         if (currentCount <= lastProductCount) {
                             warn('DOM no creció (' + lastProductCount + ' -> ' + currentCount + '). Deteniendo.');
@@ -349,13 +317,6 @@ jQuery(function($) {
 
                     nextUrl = response.next_url || false;
 
-                    // v8.3.5: lógica anti-bucle completa.
-                    // 1. Si el servidor dice explícitamente has_more=false -> fin.
-                    // 2. Si no hay next_url -> fin.
-                    // 3. Si next_url es igual a la que acabamos de pedir -> fin.
-                    // 4. Si next_url ya fue pedida antes -> fin.
-                    // 5. Si no llegaron productos nuevos -> fin.
-                    // 6. En cualquier otro caso -> continuar.
                     if (response.has_more === false || !nextUrl) {
                         hasMore = false;
                     } else {
@@ -383,7 +344,6 @@ jQuery(function($) {
                         log('No hay más productos');
                     }
                 } else {
-                    // Respuesta sin productos o fallida.
                     warn('Respuesta sin productos o fallida:', response);
                     hideLoader();
 
@@ -398,10 +358,10 @@ jQuery(function($) {
                                 loading = false;
                                 loadMoreProducts();
                             }, 2000);
-                            return; // No soltar loading aquí, se hace en el retry.
+                            return;
                         } else {
                             error('Máximo de reintentos alcanzado.');
-                            hasMore = false; // v8.3.5: para no reintentar en bucle.
+                            hasMore = false;
                             if ($('.ygb-infinito-error').length === 0) {
                                 $('ul.products').after('<div class="ygb-infinito-error">Error al cargar. Intenta recargar la página.</div>');
                             }
@@ -423,7 +383,7 @@ jQuery(function($) {
                 }, 2000);
             } else {
                 error('Máximo de reintentos alcanzado por error AJAX.');
-                hasMore = false; // v8.3.5: para no reintentar en bucle.
+                hasMore = false;
                 if ($('.ygb-infinito-error').length === 0) {
                     $('ul.products').after('<div class="ygb-infinito-error">Error de conexión. Intenta recargar la página.</div>');
                 }

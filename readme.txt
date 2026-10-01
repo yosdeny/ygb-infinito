@@ -6,7 +6,8 @@ Tested up to: 7.1.2
 Requires PHP: 8.0
 Tested PHP: 8.2
 WC requires at least: 7.0
-Stable tag: 8.3.5
+WC tested up to: 9.5
+Stable tag: 8.3.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,21 +28,22 @@ Scroll infinito para tienda y categorías de WooCommerce, con límite configurab
   * Límite máximo de productos totales (10–5000).
 * **Compatible** con los temas más populares, especialmente **Astra**, **Flatsome**, **Storefront**, y con los sistemas de caché más usados: SG Speed Optimizer y **LiteSpeed Cache**.
 * **Ligero y optimizado**: solo carga scripts en las páginas donde se necesita.
-* **Seguro**: validación de nonce, sanitización de entradas y salidas, protección contra SSRF, rate limiting y validación estricta de URLs.
+* **Seguro**: validación de nonce, sanitización de entradas y salidas, protección contra SSRF, rate limiting y validación estricta de URLs (host y puerto exactos).
 * **Soporte avanzado para lazy loading**: las imágenes de los productos cargados mediante scroll infinito se muestran correctamente gracias a la notificación automática a los sistemas de carga perezosa (WP Rocket, vanilla-lazyload, LiteSpeed Cache, etc.).
 * **Selectores de paginación ampliados**: compatible con una amplia variedad de temas.
 * **Sistema de reintentos**: si la carga falla, reintenta automáticamente hasta 3 veces.
 * **Depuración**: logs detallados en consola (activables/desactivables con `DEBUG`).
 * **Anti-bucle**: en la última página no repite la carga ni genera saltos visuales. Se detiene y muestra "No hay más productos".
+* **Desinstalación limpia**: elimina todas sus opciones, transients y datos temporales al borrarse, incluido en instalaciones **multisite**.
 
-=== Instalación ===
+=== Installation ===
 
 1. Sube la carpeta `ygb-infinito` al directorio `/wp-content/plugins/`, o instala el plugin directamente desde el repositorio de WordPress.
 2. Activa el plugin a través del menú "Plugins" en WordPress.
 3. Ve a **Administración > YGB Infinito** para ajustar la configuración (opcional).
 4. ¡Listo! El scroll infinito comenzará a funcionar automáticamente en tu tienda y categorías.
 
-=== Preguntas frecuentes ===
+=== Frequently Asked Questions ===
 
 = ¿Por qué en las búsquedas no hay scroll infinito? =
 
@@ -71,6 +73,16 @@ Simplemente desactiva el plugin desde el panel de plugins. La paginación tradic
 
 WordPress 7.0+, PHP 8.0+ y WooCommerce 7.0+.
 
+= ¿Qué datos elimina el plugin al desinstalarse? =
+
+Al borrar el plugin desde **Plugins > Eliminar**, se ejecuta `uninstall.php`, que elimina:
+* La opción `ygb_infinito_options` (configuración).
+* La opción `ygb_infinito_version`.
+* El transient de aviso `ygb_infinito_activated`.
+* Todos los transients de rate limiting (`_transient_ygb_rate_limit_*` y sus timeouts).
+
+En instalaciones **multisite**, el proceso se repite para cada sitio de la red. No se toca ningún dato de WooCommerce ni de WordPress core.
+
 = Las imágenes no se muestran al cargar nuevos productos, ¿qué hago? =
 
 Asegúrate de usar la versión 8.3.2 o superior. Esta versión incluye notificación automática a los sistemas de lazy loading (LiteSpeed, WP Rocket, etc.). Si el problema persiste, verifica que tu plugin de caché esté actualizado. En el caso de LiteSpeed, prueba a desactivar temporalmente "Aplazar JS" o "Minimizado de JS" para descartar conflictos.
@@ -81,16 +93,38 @@ Asegúrate de usar la versión 8.3.2 o superior, que incluye compatibilidad espe
 
 = Al llegar al final de la lista, el scroll empieza a saltar y a cargar productos en bucle, ¿qué hago? =
 
-Actualiza a la versión 8.3.5 o superior. Esta versión incluye una triple capa de protección anti-bucle: (1) el servidor rechaza URLs de paginación repetidas o con número de página no creciente, (2) el JavaScript registra cada URL pedida y detiene la carga cuando detecta una URL ya solicitada o cuando el DOM no crece, y (3) existe un tope absoluto de 100 páginas como red de seguridad. Al llegar al final aparece el mensaje "No hay más productos" y el scroll se detiene.
+Actualiza a la versión 8.3.5 o superior. Esta versión incluye una triple capa de protección anti-bucle: (1) el servidor rechaza URLs de paginación repetidas o con número de página no creciente, (2) el JavaScript registra cada URL pedida y detiene la carga cuando detecta una URL ya solicitada o cuando el DOM no crece, y (3) existe un tope absoluto de páginas como red de seguridad. Al llegar al final aparece el mensaje "No hay más productos" y el scroll se detiene.
+
+=== Screenshots ===
+
+1. Pantalla de ajustes del plugin con las opciones de configuración.
+2. Ejemplo de scroll infinito en la tienda.
+3. Panel de configuración mostrando rate limiting y validación de URLs activas.
+4. Mensaje "No hay más productos" al llegar al final (comportamiento anti-bucle desde 8.3.5).
 
 === Changelog ===
+
+= 8.3.6 (2026-09-30) =
+* **CRÍTICO — Ciclo de vida**: corregido el registro de `register_activation_hook()` y `register_deactivation_hook()`. Antes se registraban dentro del constructor de la clase, que se ejecuta en `plugins_loaded`, demasiado tarde para que WordPress procesara los hooks de activación/desactivación. Consecuencia: `activate()` y `deactivate()` **nunca se ejecutaban**, no se creaban las opciones por defecto, no se escribía `ygb_infinito_version` y no se hacía `flush_rewrite_rules()`. Ahora se registran a nivel de fichero con callbacks estáticos.
+* **CRÍTICO — Seguridad (SSRF)**: `is_safe_url()` comparaba el host exacto y luego un `strpos($url, $home_url) === 0` que podía bypassearse con hosts tipo `midominio.com.evil.com`. Reemplazado por comparación estricta de **host y puerto** vía `wp_parse_url()`.
+* **CRÍTICO — Desinstalación limpia**: eliminado `register_uninstall_hook()` y la función global asociada. Sustituido por `uninstall.php`, el mecanismo recomendado por WordPress, que se ejecuta en un contexto aislado y **soporta multisite** iterando todos los sitios de la red.
+* **ALTO — Seguridad**: añadido `wp_unslash()` a `$_POST['nonce']`, `$_POST['next_url']`, `$_SERVER['REMOTE_ADDR']`, `$_SERVER['HTTP_REFERER']`, `$_SERVER['REQUEST_URI']` y `$_GET['post_type']` antes de sanitizar. Evita corrupción de valores con comillas o barras invertidas.
+* **ALTO — Compatibilidad**: `load_plugin_textdomain()` movido de `plugins_loaded` a `init`, siguiendo la recomendación de WP 6.7+.
+* **ALTO — Compatibilidad**: la instancia del plugin ahora se crea en `plugins_loaded` prioridad 20 (antes 10), garantizando que WooCommerce ya está cargado.
+* **ALTO — Anti-bucle**: eliminado el hard cap de 50 páginas del servidor y el `MAX_PAGES = 100` fijo del cliente. Ahora `MAX_PAGES` se calcula a partir de los ajustes reales (`max_products / products_per_load` con margen). El servidor limita por `ceil(max_products / products_per_load)` con red de seguridad absoluta de 2000.
+* **MEDIO — Seguridad**: el uninstall ahora usa `$wpdb->esc_like()` dentro de `$wpdb->prepare()` para que los `_` literales no actúen como comodines SQL.
+* **MEDIO — Código muerto**: eliminada la función `get_current_query_args()` y el filtro `force_search_query_vars()`, que no se invocaban en ningún punto del flujo.
+* **MEDIO — JavaScript**: eliminadas las variables globales implícitas `totalProductsFound` y `totalProductsLoaded` (creadas sin `var`, además de no leerse nunca).
+* **MEDIO — JavaScript**: `updateCounter()` usa ahora una regex agnóstica al idioma del tema (`/\d+\s*[–\-]\s*\d+/` en lugar de `Mostrando \d+[–-]\d+`).
+* **BAJO — Limpieza**: eliminados los `wp_die()` inalcanzables tras `wp_send_json_error()` / `wp_send_json()` (el propio `wp_send_json_*` ya termina la ejecución).
+* **Compatibilidad**: sin cambios funcionales en el comportamiento de scroll respecto a 8.3.5.
 
 = 8.3.5 (2026-09-29) =
 * **CRÍTICO — Anti-bucle en la última página**: corregido el bucle infinito que hacía que al llegar al final de la lista el plugin intentara cargar más productos una y otra vez, produciendo un efecto de salto y saltos repetidos en lugar de mostrar "No hay más productos" y detenerse.
   * **Servidor (`ygb-infinito.php`)**: se comprueba que la URL "siguiente" extraída del HTML no sea la misma que la que se acaba de pedir ni tenga un número de página menor o igual al actual. Antes, cualquier `<a>` con "next" en la clase dentro del HTML remoto (botones de carrusel, sliders de producto, widgets de terceros) se interpretaba como paginación real y generaba un bucle.
   * **Servidor**: la extracción de la URL "siguiente" ahora usa patrones mucho más estrictos que solo aceptan enlaces dentro de contenedores de paginación (`nav.woocommerce-pagination`, `nav.ast-pagination`) o con la clase exacta `next page-numbers`. Se elimina la coincidencia con cualquier `<a>` que contenga "next" en la clase.
   * **Cliente (`ygb-infinito.js`)**: se añade un set `requestedUrls` que registra cada URL pedida. Si el servidor devuelve una URL ya solicitada, si devuelve la misma URL, o si el número de productos en el DOM no ha crecido tras una respuesta 200, se detiene la carga y se muestra el mensaje de "No hay más productos".
-  * **Cliente**: tope absoluto de 100 páginas como red de seguridad independiente de lo que diga el servidor.
+  * **Cliente**: tope absoluto de páginas como red de seguridad independiente de lo que diga el servidor.
   * **Cliente**: el loader se oculta siempre al terminar cada petición (éxito, error o "no hay más"), y no se vuelve a disparar `loadMoreProducts()` cuando `hasMore` es `false`, eliminando el salto visual.
 * **Ajuste**: `Tested up to` a 7.1.2 (última versión real de WordPress disponible).
 * **Compatibilidad**: sin cambios funcionales respecto a 8.3.4 salvo el anti-bucle.
@@ -168,8 +202,11 @@ Actualiza a la versión 8.3.5 o superior. Esta versión incluye una triple capa 
 
 === Upgrade Notice ===
 
+= 8.3.6 =
+**CRÍTICO — CICLO DE VIDA Y SEGURIDAD**: corrige tres bugs críticos. (1) Los hooks de activación/desactivación no se ejecutaban porque se registraban dentro del constructor; ahora `activate()` y `deactivate()` funcionan y crean las opciones por defecto. (2) `is_safe_url()` era bypasseable con hosts tipo `midominio.com.evil.com`; ahora compara host y puerto exactos. (3) La desinstalación se mueve a `uninstall.php` (mecanismo estándar) con soporte multisite. Además: `wp_unslash()` en todas las superglobales, `load_plugin_textdomain` en `init`, `MAX_PAGES` calculado desde los ajustes reales, y limpieza de código muerto. **Actualización recomendada para todos los usuarios.** Purga caché tras actualizar.
+
 = 8.3.5 =
-**CRÍTICO — ANTI-BUCLE**: corrige el bucle infinito en la última página que producía saltos visuales y cargas repetidas en lugar de detenerse. Triple capa de protección: servidor (URLs de paginación estrictas y sin repetición), cliente (registro de URLs pedidas y tope de 100 páginas) y DOM (no cargar si el número de productos no crece). Actualización recomendada para todos los usuarios. Purga caché tras actualizar.
+**CRÍTICO — ANTI-BUCLE**: corrige el bucle infinito en la última página que producía saltos visuales y cargas repetidas en lugar de detenerse. Triple capa de protección: servidor (URLs de paginación estrictas y sin repetición), cliente (registro de URLs pedidas y tope de páginas) y DOM (no cargar si el número de productos no crece). Actualización recomendada para todos los usuarios. Purga caché tras actualizar.
 
 = 8.3.4 =
 **AJUSTES**: Se sube el rate limiting a 20/min para eliminar falsos 429 en móvil, se limpia dead code (`force_search_sql_limit`) y se elimina el `_ygb_req` inútil de la URL. Los `error_log()` ahora solo escriben con `WP_DEBUG` activo. Sin cambios funcionales.
@@ -194,10 +231,3 @@ Actualiza a la versión 8.3.5 o superior. Esta versión incluye una triple capa 
 
 = 8.2.2 =
 **Importante**: Esta versión incluye mejoras de seguridad. Se recomienda actualizar cuanto antes.
-
-=== Screenshots ===
-
-1. Pantalla de ajustes del plugin con las opciones de configuración.
-2. Ejemplo de scroll infinito en la tienda.
-3. Panel de configuración mostrando rate limiting y validación de URLs activas.
-4. Mensaje "No hay más productos" al llegar al final (comportamiento anti-bucle desde 8.3.5).
